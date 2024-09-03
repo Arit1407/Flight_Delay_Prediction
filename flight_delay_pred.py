@@ -230,7 +230,7 @@ def main():
 
                 st.write("Prediction Results:")
                 # Apply color styling to only the prediction columns
-                styled_results = results.style.applymap(lambda v: apply_color_style(v, 'classification') if 'Prediction' in results.columns and v in results['Prediction'].values else '')
+                styled_results = results.style.applymap(lambda v: apply_color_style(v, 'classification') if 'Prediction' in results.columns and v in results['IS_DELAYED'].values else '')
 
                 # Apply color styling to only the ARRIVAL_DELAY column
                 styled_results = styled_results.applymap(lambda v: apply_color_style(v, 'regression') if 'ARRIVAL_DELAY' in results.columns and v in results['ARRIVAL_DELAY'].values else '')
