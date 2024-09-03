@@ -229,12 +229,8 @@ def main():
                 })
 
                 st.write("Prediction Results:")
-                # Apply color styling to only the prediction columns
-                styled_results = results.style.applymap(lambda v: apply_color_style(v, 'classification') if 'Prediction' in results.columns and v in results['IS_DELAYED'].values else '')
-
-                # Apply color styling to only the ARRIVAL_DELAY column
-                styled_results = styled_results.applymap(lambda v: apply_color_style(v, 'regression') if 'ARRIVAL_DELAY' in results.columns and v in results['ARRIVAL_DELAY'].values else '')
-
+                # Apply color styling to the 'IS_DELAYED' and 'ARRIVAL_DELAY' columns 
+                styled_results = results.style.applymap(lambda v: 'color: red' if v == 'Delayed' else 'color: white' if isinstance(v, str) else '', subset=['Prediction']).applymap(lambda v: 'color: red' if v > 0 else 'color: white' if isinstance(v, (int, float)) else '', subset=['ARRIVAL_DELAY'])
                 st.dataframe(styled_results)
 
             except Exception as e:
