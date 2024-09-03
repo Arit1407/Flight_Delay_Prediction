@@ -230,7 +230,7 @@ def main():
 
                 st.write("Prediction Results:")
                 # Apply color styling to the 'IS_DELAYED' and 'ARRIVAL_DELAY' columns 
-                styled_results = results.style.applymap(lambda v: 'color: red' if v == 'Delayed' else 'color: white' if isinstance(v, str) else '', subset=['Prediction']).applymap(lambda v: 'color: red' if v > 0 else 'color: white' if isinstance(v, (int, float)) else '', subset=['ARRIVAL_DELAY'])
+                styled_results = results.style.applymap(lambda v: 'color: red' if v == 'Delayed' else 'color: white' if isinstance(v, str) else '', subset=['IS_DELAYED']).applymap(lambda v: 'color: red' if v > 0 else 'color: white' if isinstance(v, (int, float)) else '', subset=['ARRIVAL_DELAY'])
                 st.dataframe(styled_results)
 
             except Exception as e:
