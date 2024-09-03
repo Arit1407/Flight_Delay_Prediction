@@ -4,15 +4,17 @@ import pandas as pd
 import numpy as np
 import os
 import base64
+from datetime import datetime
+import xgboost as xgb  # Import XGBoost
 
 # Load LabelEncoder and StandardScaler
 label_encoders = joblib.load(os.path.join('JOBLIB', 'label_encoder_complete.joblib'))
-scaler = joblib.load(os.path.join('JOBLIB', 'scalar.joblib'))
+scaler = joblib.load(os.path.join('JOBLIB', 'scalar_complete.joblib'))
 
 # Define model file paths
 model_files = {
-    'Logistic Regression': os.path.join('JOBLIB', 'xgboost_model_complete.joblib'),
-    'Linear Regression': os.path.join('JOBLIB', 'linear_regression_model.joblib')
+    'Logistic Regression': os.path.join('JOBLIB', 'logistic_regression_model_complete.joblib'),
+    'XGBoost': os.path.join('JOBLIB', 'xgboost_model_complete.joblib')  # Update with your XGBoost model path
 }
 
 # Columns to encode and all columns used for scaling
@@ -28,16 +30,20 @@ def convert_to_minutes(hour, minute):
 # Function to apply color styling based on the value
 def apply_color_style(val, prediction_type):
     if prediction_type == 'classification':
-        return 'color: red' if val == 'Delayed' else 'color: white'
+        if isinstance(val, str):
+            return 'color: red' if val == 'Delayed' else 'color: white'
+        return ''
     elif prediction_type == 'regression':
-        return 'color: red' if val > 0 else 'color: white'
+        if isinstance(val, (int, float)):
+            return 'color: red' if val > 0 else 'color: white'
+        return ''
     return ''
 
 # Helper function to encode image file to base64
 def load_image(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode()
-    
+
 # Streamlit app
 def main():
     st.set_page_config(page_title="Flight Delay Prediction", page_icon=":airplane_departure:")
@@ -50,44 +56,41 @@ def main():
     
     # Add background image to the Streamlit app
     st.markdown(
-    f"""
-    <style>
-    body {{
-        background-image: url(data:image/png;base64,{encoded_image}); 
-        background-size: cover; 
-        background-position: center;
-        color: #333333;  
-    }}
-    .stApp {{
-        background-image: url(data:image/png;base64,{encoded_image});
-        background-size: cover;
-        background-position: center;
-    }}
-    </style>
-    """, 
-    unsafe_allow_html=True
+        f"""
+        <style>
+        body {{
+            background-image: url(data:image/png;base64,{encoded_image}); 
+            background-size: cover; 
+            background-position: center;
+            color: #333333;  
+        }}
+        .stApp {{
+            background-image: url(data:image/png;base64,{encoded_image});
+            background-size: cover;
+            background-position: center;
+        }}
+        </style>
+        """, 
+        unsafe_allow_html=True
     )
-    
 
     # Option to choose between file upload and manual input
-    option = st.selectbox('Choose Input Method',['']+['Upload Test Data', 'Manual Input'])
+    option = st.selectbox('Choose Input Method', ['', 'Upload Test Data', 'Manual Input'])
 
     # Load models
     logistic_model = joblib.load(model_files['Logistic Regression'])
-    linear_model = joblib.load(model_files['Linear Regression'])
+    xgboost_model = joblib.load(model_files['XGBoost'])  # Load the XGBoost model
 
     if option == 'Upload Test Data':
         new_data_file = st.file_uploader("Upload new dataset (CSV)", type=["csv"])
 
         if new_data_file:
             new_data = pd.read_csv(new_data_file)
-
             st.write("Uploaded Data:", new_data)
 
             # Prepare data for predictions
             result_columns = new_data[['AIRLINE', 'ORIGIN_AIRPORT', 'DESTINATION_AIRPORT', 'DATE']].copy()
-            new_data = new_data.drop(['ARRIVAL_DELAY', 'IS_DELAYED'], axis=1, errors='ignore')
-            new_data = new_data.drop('DATE', axis=1, errors='ignore')
+            new_data = new_data.drop(['DATE'], axis=1, errors='ignore')
 
             # Encode categorical features
             for col in columns_to_encode:
@@ -105,16 +108,20 @@ def main():
             # Make predictions
             logistic_predictions = logistic_model.predict(new_data_scaled)
             logistic_predictions = np.where(logistic_predictions == 1, 'Delayed', 'Not Delayed')
-            linear_predictions = linear_model.predict(new_data_scaled)
+            xgboost_predictions = xgboost_model.predict(new_data_scaled)
 
             # Prepare results
             results = result_columns.copy()
-            results.insert(0, 'Logistic Regression Predictions', logistic_predictions)
-            results.insert(1, 'Linear Regression Predictions', linear_predictions)
+            results.insert(0, 'IS_DELAYED', logistic_predictions)
+            results.insert(1, 'ARRIVAL_DELAY', xgboost_predictions)
 
             st.write("Results:")
-            # Apply color styling to the DataFrame and display it
-            styled_results = results.style.applymap(lambda v: apply_color_style(v, 'classification') if 'Logistic Regression Predictions' in results.columns else apply_color_style(v, 'regression'))
+            # Apply color styling to only the prediction columns
+            styled_results = results.style.applymap(lambda v: apply_color_style(v, 'classification') if 'IS_DELAYED' in results.columns and v in results['IS_DELAYED'].values else '')
+
+            # Apply color styling to only the ARRIVAL_DELAY column
+            styled_results = styled_results.applymap(lambda v: apply_color_style(v, 'regression') if 'ARRIVAL_DELAY' in results.columns and v in results['ARRIVAL_DELAY'].values else '')
+
             st.dataframe(styled_results)
 
             # Option to download results as CSV
@@ -142,7 +149,7 @@ def main():
         airline = st.selectbox('Airline', airline_options)
         origin_airport = st.selectbox('Origin Airport', origin_airport_options)
         destination_airport = st.selectbox('Destination Airport', destination_airport_options)
-        week = st.selectbox('Week',['']+week_options)
+        week = st.selectbox('Week', [''] + week_options)
 
         st.subheader("Enter Time Details")
 
@@ -166,7 +173,6 @@ def main():
 
         if st.button('Predict'):
             try:
-
                 scheduled_departure_minutes = convert_to_minutes(scheduled_departure_hour, scheduled_departure_minute)
                 departure_time_minutes = convert_to_minutes(departure_hour, departure_minute)
                 wheels_off_minutes = convert_to_minutes(wheels_off_hour, wheels_off_minute)
@@ -201,34 +207,38 @@ def main():
                 input_data_scaled = pd.DataFrame(input_data_scaled, columns=all_columns)
 
                 # Make predictions
-                logistic_prediction = logistic_model.predict(input_data_scaled)
-                logistic_prediction = 'Delayed' if logistic_prediction[0] == 1 else 'Not Delayed'
+                logistic_predictions = logistic_model.predict(input_data_scaled)
+                logistic_predictions = np.where(logistic_predictions == 1, 'Delayed', 'Not Delayed')
+                xgboost_predictions = xgboost_model.predict(input_data_scaled)
 
-                linear_prediction = linear_model.predict(input_data_scaled)[0]
-
+                # Prepare results
                 results = pd.DataFrame({
-                    'Logistic Regression Prediction': [logistic_prediction],
-                    'Linear Regression Prediction': [linear_prediction],
-                    'Airline': [airline],
-                    'Origin Airport': [origin_airport],
-                    'Destination Airport': [destination_airport],
-                    'Week': [week],
-                    'Scheduled Departure': [f'{scheduled_departure_hour:02d}:{scheduled_departure_minute:02d}'],
-                    'Departure Time': [f'{departure_hour:02d}:{departure_minute:02d}'],
-                    'Wheels Off Time': [f'{wheels_off_hour:02d}:{wheels_off_minute:02d}'],
-                    'Taxi Out Time': [taxi_out_time],
-                    'Taxi In Time': [taxi_in_time],
-                    'Departure Delay': [departure_delay],
-                    'Date': [date],
+                    'IS_DELAYED': logistic_predictions,
+                    'ARRIVAL_DELAY': xgboost_predictions,
+                    'AIRLINE': [airline],
+                    'ORIGIN_AIRPORT': [origin_airport],
+                    'DESTINATION_AIRPORT': [destination_airport],
+                    'WEEK': [week],
+                    'SCHEDULED_DEPARTURE': [scheduled_departure_minutes],
+                    'DEPARTURE_TIME': [departure_time_minutes],
+                    'WHEELS_OFF': [wheels_off_minutes],
+                    'TAXI_OUT': [taxi_out_time],
+                    'TAXI_IN': [taxi_in_time],
+                    'DEPARTURE_DELAY': [departure_delay],
+                    'DATE': [date]
                 })
 
-                st.write("Results:")
-                # Apply color styling to the DataFrame and display it
-                styled_results = results.style.applymap(lambda v: apply_color_style(v, 'classification') if 'Logistic Regression Prediction' in results.columns else apply_color_style(v, 'regression'))
+                st.write("Prediction Results:")
+                # Apply color styling to only the prediction columns
+                styled_results = results.style.applymap(lambda v: apply_color_style(v, 'classification') if 'Prediction' in results.columns and v in results['Prediction'].values else '')
+
+                # Apply color styling to only the ARRIVAL_DELAY column
+                styled_results = styled_results.applymap(lambda v: apply_color_style(v, 'regression') if 'ARRIVAL_DELAY' in results.columns and v in results['ARRIVAL_DELAY'].values else '')
+
                 st.dataframe(styled_results)
 
-            except ValueError:
-                st.error("Please enter a valid number for Departure Delay.")
+            except Exception as e:
+                st.error(f"Error in making prediction: {str(e)}")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
